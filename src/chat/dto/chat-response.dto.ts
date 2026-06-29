@@ -1,4 +1,4 @@
-export class ChatResponseDto {
+export interface ChatResponseDto {
   reply: string;
   suggestions: string[];
 }

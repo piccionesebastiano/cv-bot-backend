@@ -11,7 +11,21 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "prestart:prod": "npm run build",
-    "start:prod": "node dist/main"
+    "start:prod": "node dist/main",
+    "test": "jest --forceExit",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage --forceExit",
+    "prepare": "git config core.hooksPath .githooks"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+    },
+    "testEnvironment": "node",
+    "setupFiles": ["reflect-metadata"]
   },
   "dependencies": {
     "@nestjs/common": "^11.1.27",
@@ -32,8 +46,11 @@
     "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "^11.1.27",
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.0",
+    "jest": "^30.4.2",
     "source-map-support": "^0.5.21",
+    "ts-jest": "^29.4.11",
     "ts-loader": "^9.6.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
