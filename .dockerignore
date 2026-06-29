@@ -6,5 +6,4 @@ data
 .git
 .gitignore
 test
-**/*.spec.ts
 test-security.sh
