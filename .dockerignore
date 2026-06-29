@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+data
+*.log
+.git
+.gitignore
+test
+**/*.spec.ts
+test-security.sh
