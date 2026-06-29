@@ -45,7 +45,7 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins.length ? allowedOrigins : false,
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning', 'x-widget-token'],
+    allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning', 'x-widget-token', 'x-admin-secret'],
   });
 
   const port = parseInt(configService.get('PORT', '3000'), 10);
