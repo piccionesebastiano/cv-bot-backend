@@ -1,4 +1,4 @@
-name: Deploy backend to Railway
+name: CI
 
 on:
   push:
@@ -18,19 +18,3 @@ jobs:
 
       - run: npm ci
       - run: npx tsc --noEmit
-
-  deploy:
-    name: Deploy to Railway
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy
-        run: railway up --service "$RAILWAY_SERVICE" --environment production --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE }}
