@@ -15,7 +15,7 @@
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage --forceExit",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "[ -d .git ] && git config core.hooksPath .githooks || true"
   },
   "jest": {
     "moduleFileExtensions": ["js", "json", "ts"],
