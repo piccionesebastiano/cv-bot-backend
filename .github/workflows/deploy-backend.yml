@@ -3,25 +3,18 @@ name: Deploy backend to Railway
 on:
   push:
     branches: [main]
-    paths:
-      - 'cv-bot-backend/**'
-      - '.github/workflows/deploy-backend.yml'
 
 jobs:
   validate:
     name: Type-check
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cv-bot-backend
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
-          cache-dependency-path: cv-bot-backend/package-lock.json
 
       - run: npm ci
       - run: npx tsc --noEmit
@@ -30,9 +23,6 @@ jobs:
     name: Deploy to Railway
     needs: validate
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cv-bot-backend
     steps:
       - uses: actions/checkout@v4
 
