@@ -17,6 +17,7 @@ export class CvLoaderService implements OnModuleInit {
   private readonly logger = new Logger(CvLoaderService.name);
   private _systemPrompt = '';
   private _promptHash = '';
+  private _cvContent = '';
 
   async onModuleInit(): Promise<void> {
     await this.loadAndBuild();
@@ -24,6 +25,7 @@ export class CvLoaderService implements OnModuleInit {
 
   get systemPrompt(): string { return this._systemPrompt; }
   get promptHash(): string   { return this._promptHash;   }
+  get cvContent(): string    { return this._cvContent;    }
 
   async reload(newContent: string): Promise<{ previousHash: string; newHash: string }> {
     await mkdir(dirname(CV_VOLUME_PATH), { recursive: true });
@@ -53,6 +55,7 @@ export class CvLoaderService implements OnModuleInit {
   }
 
   private build(cvContent: string): void {
+    this._cvContent = cvContent;
     this._systemPrompt = buildSystemPrompt(cvContent);
     this._promptHash = createHash('sha256').update(this._systemPrompt).digest('hex').slice(0, 8);
   }

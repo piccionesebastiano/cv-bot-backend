@@ -58,6 +58,15 @@ export class AdminController {
     };
   }
 
+  @Get('cv/content')
+  @HttpCode(HttpStatus.OK)
+  getCvContent(
+    @Headers('x-admin-secret') token: string,
+  ): { content: string } {
+    this.authorize(token);
+    return { content: this.cvLoader.cvContent };
+  }
+
   private authorize(token: string): void {
     if (!this.secret) throw new BadRequestException('ADMIN_SECRET non configurato');
     if (token !== this.secret) throw new UnauthorizedException('Token non valido');
