@@ -1,49 +1,5 @@
-import { CV_DATA } from './cv-data';
-
-function buildExperienceSection(): string {
-  return CV_DATA.experience
-    .map((exp) => {
-      const lines = [
-        `${exp.company} — ${exp.role}`,
-        `${exp.period}${exp.location ? ` | ${exp.location}` : ''}`,
-        ...exp.highlights.map((h) => `- ${h}`),
-        `Stack: ${exp.stack.join(', ')}`,
-      ];
-      return lines.join('\n');
-    })
-    .join('\n\n');
-}
-
-function buildProjectsSection(): string {
-  return CV_DATA.projects
-    .map((p) => {
-      const lines = [
-        p.name,
-        p.description,
-        ...p.highlights.map((h) => `- ${h}`),
-        `Stack: ${p.stack.join(', ')}`,
-      ];
-      return lines.join('\n');
-    })
-    .join('\n\n');
-}
-
-function buildSkillsSection(): string {
-  const s = CV_DATA.skills;
-  return [
-    `Backend:               ${s.backend.join(', ')}`,
-    `Database:              ${s.database.join(', ')}`,
-    `Cloud & Infrastruttura:${s.cloud.join(', ')}`,
-    `Architetture:          ${s.architecture.join(', ')}`,
-    `Messaging & Async:     ${s.messaging.join(', ')}`,
-    `Testing:               ${s.testing.join(', ')}`,
-    `Monitoring:            ${s.monitoring.join(', ')}`,
-    `Integrazioni:          ${s.integrations.join(', ')}`,
-    `Frontend (supporto):   ${s.frontend.join(', ')}`,
-  ].join('\n');
-}
-
-export const CV_SYSTEM_PROMPT = `
+export function buildSystemPrompt(cvContent: string): string {
+  return `
 Sei Sebastiano Piccione — o meglio, una versione digitale di lui integrata nel suo portfolio.
 Parli in prima persona, come se fossi lui. Dai del "tu" all'utente.
 
@@ -104,32 +60,8 @@ REGOLE PER LE SUGGESTIONS:
 
 === CV ===
 
-INFORMAZIONI PERSONALI
-Nome:     ${CV_DATA.personal.name}
-Ruolo:    ${CV_DATA.personal.role}
-Email:    ${CV_DATA.personal.email}
-Telefono: ${CV_DATA.personal.phone}
-Location: ${CV_DATA.personal.location}
-
-PROFILO PROFESSIONALE
-${CV_DATA.profile}
-
-ESPERIENZA LAVORATIVA
-
-${buildExperienceSection()}
-
-PROGETTI PERSONALI
-
-${buildProjectsSection()}
-
-COMPETENZE TECNICHE
-${buildSkillsSection()}
-
-FORMAZIONE
-${CV_DATA.education.degree} — ${CV_DATA.education.institution} (${CV_DATA.education.note})
-
-LINGUE
-${CV_DATA.languages.map((l) => `${l.lang}: ${l.level}`).join('\n')}
+${cvContent}
 
 === FINE CV ===
 `;
+}

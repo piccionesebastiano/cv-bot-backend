@@ -18,6 +18,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+# Default CV bundled in the image — outside /app/data so Railway Volume doesn't shadow it
+COPY cv-content.md ./cv-defaults/cv-content.md
 
 EXPOSE 3000
 

@@ -1,10 +1,10 @@
 import { Injectable, InternalServerErrorException, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
-import { CV_SYSTEM_PROMPT } from './prompts/cv-system-prompt';
 import { SemanticCacheService, CacheLookupResult } from './semantic-cache.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
 import { ChatResponseDto } from './dto/chat-response.dto';
+import { CvLoaderService } from '../common/cv-loader.service';
 
 interface OpenRouterResponse {
   choices: Array<{ message: { content: string } }>;
@@ -80,6 +80,7 @@ export class ChatService {
   constructor(
     private readonly configService: ConfigService,
     private readonly semanticCache: SemanticCacheService,
+    private readonly cvLoader: CvLoaderService,
   ) {
     const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
     if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata nelle variabili d'ambiente.");
@@ -207,7 +208,7 @@ export class ChatService {
           max_tokens: this.MAX_TOKENS,
           stream: true,
           messages: [
-            { role: 'system', content: CV_SYSTEM_PROMPT },
+            { role: 'system', content: this.cvLoader.systemPrompt },
             ...history,
             { role: 'user', content: userMessage },
           ],
@@ -343,7 +344,7 @@ export class ChatService {
           model: this.MODEL,
           max_tokens: this.MAX_TOKENS,
           messages: [
-            { role: 'system', content: CV_SYSTEM_PROMPT },
+            { role: 'system', content: this.cvLoader.systemPrompt },
             ...history,
             { role: 'user', content: userMessage },
           ],

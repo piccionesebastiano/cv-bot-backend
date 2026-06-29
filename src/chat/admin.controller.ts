@@ -1,0 +1,65 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+  BadRequestException,
+  Headers,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
+import { IsString, MinLength } from 'class-validator';
+import { CvLoaderService } from '../common/cv-loader.service';
+import { SemanticCacheService } from './semantic-cache.service';
+
+class UpdateCvDto {
+  @IsString()
+  @MinLength(10)
+  content: string;
+}
+
+@Controller('admin')
+@SkipThrottle()
+export class AdminController {
+  private readonly secret: string | undefined;
+
+  constructor(
+    private readonly cvLoader: CvLoaderService,
+    private readonly semanticCache: SemanticCacheService,
+    private readonly configService: ConfigService,
+  ) {
+    this.secret = this.configService.get<string>('ADMIN_SECRET');
+  }
+
+  @Post('cv')
+  @HttpCode(HttpStatus.OK)
+  async updateCv(
+    @Headers('x-admin-secret') token: string,
+    @Body() dto: UpdateCvDto,
+  ): Promise<{ previousHash: string; newHash: string; clearedEntries: number }> {
+    this.authorize(token);
+    const hashes = await this.cvLoader.reload(dto.content);
+    const clearedEntries = await this.semanticCache.clearAll();
+    return { ...hashes, clearedEntries };
+  }
+
+  @Get('cv')
+  @HttpCode(HttpStatus.OK)
+  getCvInfo(
+    @Headers('x-admin-secret') token: string,
+  ): { hash: string; cacheSize: number } {
+    this.authorize(token);
+    return {
+      hash: this.cvLoader.promptHash,
+      cacheSize: this.semanticCache.size,
+    };
+  }
+
+  private authorize(token: string): void {
+    if (!this.secret) throw new BadRequestException('ADMIN_SECRET non configurato');
+    if (token !== this.secret) throw new UnauthorizedException('Token non valido');
+  }
+}

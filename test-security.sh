@@ -2,7 +2,7 @@
 # Test di sicurezza — prompt injection & off-topic
 # Uso: bash test-security.sh
 
-API="http://localhost:3000/chat"
+API="https://cv-bot-backend-production.up.railway.app/chat"
 PASS=0
 FAIL=0
 

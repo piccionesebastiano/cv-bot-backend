@@ -3,10 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { createHash } from 'crypto';
 import { Worker } from 'worker_threads';
 import Redis from 'ioredis';
-import { CV_SYSTEM_PROMPT } from './prompts/cv-system-prompt';
+import { CvLoaderService } from '../common/cv-loader.service';
 
 interface CacheEntry {
   question: string;
@@ -32,8 +31,6 @@ const CACHE_DIR = process.env['CACHE_DIR'] ?? join(process.cwd(), 'data');
 const CACHE_FILE = join(CACHE_DIR, 'cache.json');
 const REDIS_CACHE_KEY = 'cv:semantic-cache';
 
-const PROMPT_HASH = createHash('sha256').update(CV_SYSTEM_PROMPT).digest('hex').slice(0, 8);
-
 @Injectable()
 export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SemanticCacheService.name);
@@ -42,7 +39,10 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
   private readonly redis: Redis | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly cvLoader: CvLoaderService,
+  ) {
     this.apiKey = this.configService.get<string>('OPENROUTER_API_KEY') ?? '';
     const redisUrl = this.configService.get<string>('REDIS_URL');
     if (redisUrl) {
@@ -57,7 +57,8 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    this.logger.log(`Prompt hash corrente: ${PROMPT_HASH}`);
+    // CvLoaderService is initialized before this service (dependency order)
+    this.logger.log(`Prompt hash corrente: ${this.cvLoader.promptHash}`);
     if (this.redis) {
       await this.loadFromRedis();
     } else {
@@ -94,10 +95,12 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
       return { hit: false, embedding };
     }
 
+    const currentHash = this.cvLoader.promptHash;
     let bestSimilarity = 0;
     let bestEntry: CacheEntry | null = null;
 
     for (const entry of this.cache) {
+      if (entry.promptHash !== currentHash) continue;
       const similarity = cosineSimilarity(embedding, entry.embedding);
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
@@ -130,10 +133,31 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Cache piena — evicted LFU: "${evicted.question.slice(0, 60)}" (${evicted.hits} hits)`);
     }
 
-    this.cache.push({ question, embedding, answer, suggestions, hits: 0, createdAt: new Date().toISOString(), promptHash: PROMPT_HASH });
+    this.cache.push({
+      question,
+      embedding,
+      answer,
+      suggestions,
+      hits: 0,
+      createdAt: new Date().toISOString(),
+      promptHash: this.cvLoader.promptHash,
+    });
     this.logger.log(`Salvata in cache: "${question.slice(0, 60)}" | entries totali: ${this.cache.length}`);
 
     this.scheduleSave();
+  }
+
+  async clearAll(): Promise<number> {
+    const count = this.cache.length;
+    this.cache.splice(0, this.cache.length);
+    this.logger.log(`Cache svuotata — rimosse ${count} entries`);
+
+    if (this.redis) {
+      await this.redis.del(REDIS_CACHE_KEY);
+    } else {
+      await this.saveToDisk();
+    }
+    return count;
   }
 
   private scheduleSave(): void {
@@ -159,10 +183,11 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       const entries: CacheEntry[] = JSON.parse(raw);
-      const valid = entries.filter((e) => e.promptHash === PROMPT_HASH);
+      const currentHash = this.cvLoader.promptHash;
+      const valid = entries.filter((e) => e.promptHash === currentHash);
       const stale = entries.length - valid.length;
       if (stale > 0) {
-        this.logger.warn(`Scartate ${stale} entries con prompt hash diverso (prompt aggiornato)`);
+        this.logger.warn(`Scartate ${stale} entries con prompt hash diverso (CV aggiornato)`);
       }
       this.cache.push(...valid);
       this.logger.log(`Cache caricata da Redis: ${valid.length} entries valide`);
@@ -192,12 +217,12 @@ export class SemanticCacheService implements OnModuleInit, OnModuleDestroy {
     try {
       const raw = await readFile(CACHE_FILE, 'utf-8');
       const entries: CacheEntry[] = JSON.parse(raw);
-
-      const valid = entries.filter((e) => e.promptHash === PROMPT_HASH);
+      const currentHash = this.cvLoader.promptHash;
+      const valid = entries.filter((e) => e.promptHash === currentHash);
       const stale = entries.length - valid.length;
 
       if (stale > 0) {
-        this.logger.warn(`Scartate ${stale} entries con prompt hash diverso (prompt aggiornato)`);
+        this.logger.warn(`Scartate ${stale} entries con prompt hash diverso (CV aggiornato)`);
       }
 
       this.cache.push(...valid);
