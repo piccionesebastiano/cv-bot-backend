@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { safeEqual } from '../safe-equal';
 
 @Injectable()
 export class WidgetTokenGuard implements CanActivate {
@@ -15,7 +16,7 @@ export class WidgetTokenGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const token = request.headers['x-widget-token'];
 
-    if (token !== secret) {
+    if (typeof token !== 'string' || !safeEqual(token, secret)) {
       throw new UnauthorizedException('Token non valido.');
     }
 

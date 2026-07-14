@@ -10,10 +10,11 @@ import {
   Headers,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { IsString, MinLength } from 'class-validator';
 import { CvLoaderService } from '../common/cv-loader.service';
 import { SemanticCacheService } from './semantic-cache.service';
+import { safeEqual } from '../common/safe-equal';
 
 class UpdateCvDto {
   @IsString()
@@ -22,7 +23,7 @@ class UpdateCvDto {
 }
 
 @Controller('admin')
-@SkipThrottle()
+@Throttle({ default: { limit: 3, ttl: 60000 } })
 export class AdminController {
   private readonly secret: string | undefined;
 
@@ -69,6 +70,6 @@ export class AdminController {
 
   private authorize(token: string): void {
     if (!this.secret) throw new BadRequestException('ADMIN_SECRET non configurato');
-    if (token !== this.secret) throw new UnauthorizedException('Token non valido');
+    if (!safeEqual(token, this.secret)) throw new UnauthorizedException('Token non valido');
   }
 }

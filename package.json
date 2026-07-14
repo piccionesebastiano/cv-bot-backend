@@ -4,7 +4,7 @@
   "description": "CV Chatbot backend — NestJS + OpenRouter",
   "author": "Sebastiano Piccione",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "build": "nest build",
     "start": "nest start",
