@@ -89,7 +89,9 @@ export class ChatService {
     // Injection checks before committing to SSE — exceptions still reach the filter here
     this.checkInjection(dto.message, 'message');
     for (const item of dto.history ?? []) {
-      this.checkInjection(item.content, `history[${item.role}]`);
+      if (item.role === 'user') {
+        this.checkInjection(item.content, `history[${item.role}]`);
+      }
     }
 
     res.writeHead(200, {

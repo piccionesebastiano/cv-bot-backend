@@ -147,4 +147,40 @@ describe('ChatService', () => {
       expect(result.suggestions).toEqual(['follow-up 1', 'follow-up 2']);
     });
   });
+
+  describe('streamChat()', () => {
+    function makeRes() {
+      return {
+        writeHead: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+      };
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('non blocca la history quando contiene la presentazione del bot ("Sono Sebastiano...")', async () => {
+      // Regressione: le risposte dell'assistente (es. "Ciao! Sono Sebastiano...") finiscono in history
+      // e non devono essere ricontrollate come se fossero un tentativo di impersonificazione dell'utente.
+      const { service } = makeService();
+      const res = makeRes();
+      jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+
+      await service.streamChat(
+        {
+          message: 'raccontami un problema tecnico risolto',
+          history: [
+            { role: 'assistant', content: 'Ciao! Sono Sebastiano, backend engineer con esperienza su sistemi e-commerce.' },
+          ],
+        },
+        res as unknown as import('express').Response,
+      );
+
+      // Se checkInjection avesse bloccato il contenuto assistant, non si sarebbe mai arrivati a scrivere l'header SSE.
+      expect(res.writeHead).toHaveBeenCalled();
+      expect(res.end).toHaveBeenCalled();
+    });
+  });
 });
