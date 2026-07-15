@@ -27,7 +27,7 @@ export class ChatService {
   private readonly apiKey: string;
 
   private readonly OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-  private readonly MODEL = 'deepseek/deepseek-chat';
+  private readonly MODEL = 'deepseek/deepseek-v4-flash';
   private readonly MAX_TOKENS = 900;
   private readonly SITE_URL = 'https://sebastianopiccionecv.com';
   private readonly SITE_NAME = 'Sebastiano Piccione - CV Bot';
