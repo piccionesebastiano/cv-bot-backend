@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, BadRequestException, Logger }
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { SemanticCacheService, CacheLookupResult } from './semantic-cache.service';
+import { ConversationLogService } from './conversation-log.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
 import { ChatResponseDto } from './dto/chat-response.dto';
 import { CvLoaderService } from '../common/cv-loader.service';
@@ -28,6 +29,15 @@ export class ChatService {
 
   private readonly OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
   private readonly MODEL = 'deepseek/deepseek-v4-flash';
+  // GDPR: allowlist esplicita di provider USA con SCC (garanzie di trasferimento art. 46).
+  // Usiamo `only` invece di escludere per nome perché data_collection filtra la
+  // conservazione, NON la geografia: senza allowlist OpenRouter può instradare verso
+  // provider cinesi (es. Baidu, Alibaba) anche con data_collection: deny.
+  // `data_collection: deny` aggiunge la garanzia che i contenuti non vengano conservati.
+  private readonly PROVIDER_ROUTING = {
+    only: ['fireworks', 'deepinfra'],
+    data_collection: 'deny',
+  } as const;
   private readonly MAX_TOKENS = 900;
   private readonly SITE_URL = 'https://sebastianopiccionecv.com';
   private readonly SITE_NAME = 'Sebastiano Piccione - CV Bot';
@@ -36,6 +46,7 @@ export class ChatService {
     private readonly configService: ConfigService,
     private readonly semanticCache: SemanticCacheService,
     private readonly cvLoader: CvLoaderService,
+    private readonly conversationLog: ConversationLogService,
   ) {
     const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
     if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata nelle variabili d'ambiente.");
@@ -60,6 +71,7 @@ export class ChatService {
 
       if (lookup.hit) {
         this.logger.log(`✓ Cache HIT — risposta servita senza chiamata LLM`);
+        this.conversationLog.logTurn(dto.sessionId, dto.message, lookup.answer);
         return { reply: lookup.answer, suggestions: lookup.suggestions };
       }
 
@@ -72,6 +84,7 @@ export class ChatService {
         });
       }
 
+      this.conversationLog.logTurn(dto.sessionId, dto.message, reply);
       return { reply, suggestions };
     }
 
@@ -79,6 +92,7 @@ export class ChatService {
     this.logger.log(`→ Multi-turn, skip cache — invio a OpenRouter (${this.MODEL})`);
     const cappedHistory = (dto.history ?? []).slice(-(MAX_HISTORY_PAIRS * 2));
     const { reply, suggestions } = await this.callLLM(dto.message, cappedHistory);
+    this.conversationLog.logTurn(dto.sessionId, dto.message, reply);
     return { reply, suggestions };
   }
 
@@ -113,6 +127,7 @@ export class ChatService {
           this.logger.log('✓ [stream] Cache HIT');
           send({ token: lookup.answer });
           send({ done: true, reply: lookup.answer, suggestions: lookup.suggestions });
+          this.conversationLog.logTurn(dto.sessionId, dto.message, lookup.answer);
           return;
         }
 
@@ -124,12 +139,14 @@ export class ChatService {
             this.logger.warn('Errore salvataggio in cache (stream)', err);
           });
         }
+        if (parsed) this.conversationLog.logTurn(dto.sessionId, dto.message, parsed.reply);
         return;
       }
 
       this.logger.log(`→ [stream] Multi-turn, skip cache`);
       const cappedHistory = (dto.history ?? []).slice(-(MAX_HISTORY_PAIRS * 2));
-      await this.streamLLM(dto.message, cappedHistory, send);
+      const parsed = await this.streamLLM(dto.message, cappedHistory, send);
+      if (parsed) this.conversationLog.logTurn(dto.sessionId, dto.message, parsed.reply);
     } catch (err) {
       this.logger.error('Errore nel streaming SSE', err);
       try { send({ error: 'Errore interno del server' }); } catch (_) {}
@@ -164,6 +181,7 @@ export class ChatService {
           model: this.MODEL,
           max_tokens: this.MAX_TOKENS,
           stream: true,
+          provider: this.PROVIDER_ROUTING,
           messages: [
             { role: 'system', content: this.cvLoader.systemPrompt },
             ...history,
@@ -300,6 +318,7 @@ export class ChatService {
         body: JSON.stringify({
           model: this.MODEL,
           max_tokens: this.MAX_TOKENS,
+          provider: this.PROVIDER_ROUTING,
           messages: [
             { role: 'system', content: this.cvLoader.systemPrompt },
             ...history,

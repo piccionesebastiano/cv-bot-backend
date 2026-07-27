@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { IsString, MinLength } from 'class-validator';
 import { CvLoaderService } from '../common/cv-loader.service';
 import { SemanticCacheService } from './semantic-cache.service';
+import { ConversationLogService, Conversation } from './conversation-log.service';
 import { safeEqual } from '../common/safe-equal';
 
 class UpdateCvDto {
@@ -30,6 +32,7 @@ export class AdminController {
   constructor(
     private readonly cvLoader: CvLoaderService,
     private readonly semanticCache: SemanticCacheService,
+    private readonly conversationLog: ConversationLogService,
     private readonly configService: ConfigService,
   ) {
     this.secret = this.configService.get<string>('ADMIN_SECRET');
@@ -66,6 +69,26 @@ export class AdminController {
   ): { content: string } {
     this.authorize(token);
     return { content: this.cvLoader.cvContent };
+  }
+
+  @Get('conversations')
+  @HttpCode(HttpStatus.OK)
+  getConversations(
+    @Headers('x-admin-secret') token: string,
+  ): { count: number; conversations: Conversation[] } {
+    this.authorize(token);
+    const conversations = this.conversationLog.list();
+    return { count: conversations.length, conversations };
+  }
+
+  @Delete('conversations')
+  @HttpCode(HttpStatus.OK)
+  async clearConversations(
+    @Headers('x-admin-secret') token: string,
+  ): Promise<{ cleared: number }> {
+    this.authorize(token);
+    const cleared = await this.conversationLog.clearAll();
+    return { cleared };
   }
 
   private authorize(token: string): void {

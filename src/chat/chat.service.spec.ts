@@ -20,7 +20,14 @@ function makeService(lookupResult?: CacheLookupResult) {
     systemPrompt: 'Test system prompt',
   } as unknown as CvLoaderService;
 
-  return { service: new ChatService(configService, semanticCache, cvLoader), semanticCache };
+  const conversationLog = {
+    logTurn: jest.fn(),
+  } as unknown as import('./conversation-log.service').ConversationLogService;
+
+  return {
+    service: new ChatService(configService, semanticCache, cvLoader, conversationLog),
+    semanticCache,
+  };
 }
 
 // Accede ai metodi privati per test unitari isolati

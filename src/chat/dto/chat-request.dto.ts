@@ -18,6 +18,11 @@ export class ChatRequestDto {
   message: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sessionId?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(20, { message: 'History troppo lunga (max 20 messaggi).' })
   @ValidateNested({ each: true })
