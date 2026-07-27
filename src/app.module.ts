@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ChatModule } from './chat/chat.module';
+import { SiteModule } from './site/site.module';
 import { RedisThrottlerStorage } from './common/redis-throttler-storage.service';
 
 @Module({
@@ -25,6 +26,7 @@ import { RedisThrottlerStorage } from './common/redis-throttler-storage.service'
     }),
 
     ChatModule,
+    SiteModule,
   ],
   providers: [
     {

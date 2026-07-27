@@ -25,6 +25,8 @@ Pairs with **[cv-bot-frontend](https://github.com/piccionesebastiano/cv-bot-fron
 - **Streaming**: `/chat/stream` proxies OpenRouter's SSE stream and incrementally extracts the `reply` field out of the model's structured JSON output as it arrives.
 - **Guardrails**: `injection-patterns.ts` rejects prompt-injection attempts before they reach the model; `ValidationPipe` with `whitelist`/`forbidNonWhitelisted` rejects malformed payloads; request bodies are capped at 16kb.
 - **Admin**: `/admin/cv` lets an authenticated caller hot-swap the CV content at runtime (persisted to a volume) without a redeploy, invalidating the semantic cache on update.
+- **Site analytics**: `SiteAnalyticsService` powers the click/attention heatmap for the whole site (`POST /site/events`). **Raw hits are never stored** — every event is folded into fixed-size aggregates on arrival, so memory is bounded by the shape of the site (pages × devices × grid cells), not by traffic: a page with a million clicks costs the same as one with a thousand. Positions are normalised to *% of viewport width* horizontally and *absolute px from the document top* vertically, which survives responsive reflow, then bucketed into a 100-column × 40px grid per (page, device, layer). Scroll depth is kept as 20 reach bands and click targets as a capped selector→count map. See the [project structure](#project-structure) for the module layout.
+- **Analytics**: `AnalyticsService` collects batched widget events (`POST /events`) — which suggestion chips get clicked, what gets asked, whether the proactive nudge converts — and aggregates them for `/admin/analytics`. Same storage strategy as the cache: Redis when `REDIS_URL` is set, `data/analytics.json` otherwise, capped at the last 5 000 events. No cookies and no persistent identifier: events carry only the ephemeral `sessionId` the widget already sends with each chat turn.
 
 ## API
 
@@ -32,10 +34,18 @@ Pairs with **[cv-bot-frontend](https://github.com/piccionesebastiano/cv-bot-fron
 |--------|------------------|----------------------|---------------------------------------------------|
 | POST   | `/chat`          | `x-widget-token`*    | Single-turn or multi-turn chat, JSON response      |
 | POST   | `/chat/stream`   | `x-widget-token`*    | Same, streamed via Server-Sent Events              |
+| POST   | `/events`        | `x-widget-token`*    | Batched widget telemetry (max 30 events), `204`    |
+| POST   | `/site/events`   | `x-widget-token`*    | Batched site telemetry (max 40 events), `204`      |
 | GET    | `/health`        | none                  | Liveness check                                     |
 | GET    | `/admin/cv`      | `x-admin-secret`      | Current CV hash + cache size                       |
 | GET    | `/admin/cv/content` | `x-admin-secret`   | Raw CV Markdown content                            |
 | POST   | `/admin/cv`      | `x-admin-secret`      | Replace CV content, clears semantic cache          |
+| GET    | `/admin/analytics` | `x-admin-secret`    | Aggregated widget stats (top chips, engagement…)   |
+| GET    | `/admin/analytics/events` | `x-admin-secret` | Raw events, most recent first                 |
+| DELETE | `/admin/analytics` | `x-admin-secret`    | Wipe collected events                              |
+| GET    | `/admin/site`    | `x-admin-secret`      | Site-wide overview (sessions, pages, referrers)    |
+| GET    | `/admin/site/heatmap` | `x-admin-secret` | Heatmap grid for `?path=&device=&layer=`           |
+| DELETE | `/admin/site`    | `x-admin-secret`      | Reset all site analytics                           |
 
 \* `x-widget-token` is only enforced if `WIDGET_SECRET` is set (guard is a no-op otherwise, for backwards compatibility).
 
@@ -105,12 +115,18 @@ src/
 ├── main.ts                     # bootstrap: helmet, CORS, validation, body limits
 ├── app.module.ts                # throttler config, global guard
 ├── chat/
-│   ├── chat.controller.ts       # POST /chat, /chat/stream, GET /health
+│   ├── chat.controller.ts       # POST /chat, /chat/stream, /events, GET /health
 │   ├── chat.service.ts          # OpenRouter calls, streaming parser, cache orchestration
-│   ├── admin.controller.ts      # /admin/cv (read/write CV content)
+│   ├── admin.controller.ts      # /admin/cv, /admin/conversations, /admin/analytics
 │   ├── semantic-cache.service.ts
+│   ├── conversation-log.service.ts
+│   ├── analytics.service.ts     # widget event collection + aggregation
 │   ├── injection-patterns.ts
 │   └── prompts/cv-system-prompt.ts
+├── site/
+│   ├── site.controller.ts       # POST /site/events
+│   ├── site-admin.controller.ts # /admin/site, /admin/site/heatmap
+│   └── site-analytics.service.ts # aggregate-on-write heatmap grid + page stats
 └── common/
     ├── cv-loader.service.ts     # loads/persists the CV markdown, builds prompt hash
     ├── guards/widget-token.guard.ts

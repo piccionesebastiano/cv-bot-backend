@@ -16,6 +16,7 @@ import { IsString, MinLength } from 'class-validator';
 import { CvLoaderService } from '../common/cv-loader.service';
 import { SemanticCacheService } from './semantic-cache.service';
 import { ConversationLogService, Conversation } from './conversation-log.service';
+import { AnalyticsService, AnalyticsEvent, AnalyticsStats } from './analytics.service';
 import { safeEqual } from '../common/safe-equal';
 
 class UpdateCvDto {
@@ -33,6 +34,7 @@ export class AdminController {
     private readonly cvLoader: CvLoaderService,
     private readonly semanticCache: SemanticCacheService,
     private readonly conversationLog: ConversationLogService,
+    private readonly analytics: AnalyticsService,
     private readonly configService: ConfigService,
   ) {
     this.secret = this.configService.get<string>('ADMIN_SECRET');
@@ -88,6 +90,35 @@ export class AdminController {
   ): Promise<{ cleared: number }> {
     this.authorize(token);
     const cleared = await this.conversationLog.clearAll();
+    return { cleared };
+  }
+
+  @Get('analytics')
+  @HttpCode(HttpStatus.OK)
+  getAnalytics(
+    @Headers('x-admin-secret') token: string,
+  ): AnalyticsStats {
+    this.authorize(token);
+    return this.analytics.stats();
+  }
+
+  @Get('analytics/events')
+  @HttpCode(HttpStatus.OK)
+  getAnalyticsEvents(
+    @Headers('x-admin-secret') token: string,
+  ): { count: number; events: AnalyticsEvent[] } {
+    this.authorize(token);
+    const events = this.analytics.list();
+    return { count: events.length, events };
+  }
+
+  @Delete('analytics')
+  @HttpCode(HttpStatus.OK)
+  async clearAnalytics(
+    @Headers('x-admin-secret') token: string,
+  ): Promise<{ cleared: number }> {
+    this.authorize(token);
+    const cleared = await this.analytics.clearAll();
     return { cleared };
   }
 
