@@ -44,7 +44,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: allowedOrigins.length ? allowedOrigins : false,
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning', 'x-widget-token', 'x-admin-secret'],
   });
 
