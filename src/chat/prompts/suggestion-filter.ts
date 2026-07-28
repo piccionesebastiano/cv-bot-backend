@@ -33,6 +33,10 @@ const DETTAGLIO_ASSENTE = [
   /\bquanto\s+(guadagn|costav|ti\s+pagav)/i,
   /\bquant[oa]\s+era\b/i,
   /\bche\s+(tool|strumento)\s+di\s+(ci\/?cd|deploy|monitoring)\b/i,
+  // "Che servizi AWS usavi?" — chiede di enumerare i sotto-elementi di una tecnologia,
+  // cosa che il CV non fa mai. Volutamente SENZA /i: serve il nome proprio maiuscolo,
+  // così "quali servizi hai integrato?" (a cui il CV risponde) resta valida.
+  /\b(che|quali|Che|Quali)\s+(servizi|componenti|moduli|parti)\s+(di\s+)?[A-Z]/,
 ];
 
 const SCARTA = [...OLTRE_L_ELENCO, ...DETTAGLIO_ASSENTE];

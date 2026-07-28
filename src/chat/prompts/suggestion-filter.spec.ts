@@ -18,6 +18,9 @@ describe('filterSuggestions', () => {
       'Quanto tempo ci hai messo a risolverlo?',
       'Che tool di CI/CD usavate?',
       'Quanto era carico il database?',
+      'Che servizi AWS usavi?',
+      'Quali servizi di GCP hai usato?',
+      'Che componenti Strapi hai sviluppato?',
     ])('scarta "%s"', (s) => {
       expect(scartata(s)).toEqual([s]);
     });
@@ -34,6 +37,8 @@ describe('filterSuggestions', () => {
       'Perché hai scelto i webhook?',
       'Cosa è successo dopo l\'hotfix?',
       'Quali metriche monitoravi?',
+      'Quali servizi hai integrato?',
+      'Che parti del sistema hai riscritto?',
     ])('tiene "%s"', (s) => {
       expect(tenuta(s)).toEqual([s]);
     });

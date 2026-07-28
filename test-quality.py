@@ -178,6 +178,21 @@ SUGGESTION_VICOLO_CIECO = [
     r"\bquant[oa]\s+era\b",
 ]
 
+# Senza re.I: serve il nome proprio maiuscolo (vedi suggestion-filter.ts).
+SUGGESTION_ENUMERA_SOTTOELEMENTI = r"\b(che|quali|Che|Quali)\s+(servizi|componenti|moduli|parti)\s+(di\s+)?[A-Z]"
+
+# Errore relazionale: il CV elenca voci accostate ("su AWS, Netlify e server Linux") e il
+# modello le annida, presentandone una come servizio di un'altra. Si segnala solo quando la
+# frase ha una costruzione enumerativa ("servizi AWS", "componenti di GCP"): "ho usato AWS e
+# Netlify" è invece corretto e non va toccato.
+NON_APPARTENGONO = {
+    "AWS": ["Netlify", "GCP", "Cloud Run", "Azure", "Strapi", "Vercel", "Firebase"],
+    "GCP": ["DynamoDB", "Netlify", "AWS", "Azure", "S3"],
+    "Azure": ["DynamoDB", "Cloud Run", "AWS", "GCP", "Netlify"],
+    "Shopify": ["Strapi", "Medusa", "Netlify"],
+}
+ENUMERATIVA_RE = r"(servizi|componenti|moduli|prodotti|parti)\s+(di\s+)?{plat}|{plat}\s*[:(]"
+
 VERSIONE_RE = re.compile(r"\b(?:versione |v)?(\d+)\.(?:x|\d+)(?:\.\d+)?\b", re.I)
 NUMERO_RE = re.compile(r"\b\d[\d.,]*\s*(?:%|mila|k\b|utenti|prodotti|ore|minuti|giorni|colleghi|container|istanze|persone)", re.I)
 
@@ -214,9 +229,10 @@ class Rilevatore:
         t = testo.lower()
         return {nome for nome, pats in self.episodi.items() if any(re.search(p, t) for p in pats)}
 
-    def analizza(self, reply: str):
+    def analizza(self, reply: str, domanda: str = ""):
         difetti = []
         low = reply.lower()
+        domanda_low = domanda.lower()
 
         for pattern, motivo in AUTOVALUTAZIONE:
             m = re.search(pattern, low)
@@ -230,8 +246,17 @@ class Rilevatore:
                 break
 
         for term in TECH_TERMS:
-            if re.search(rf"\b{re.escape(term)}\b", reply, re.I) and term.lower() not in self.cv_lower:
-                difetti.append(("invenzione", "tecnologia non presente nel CV", term))
+            if not re.search(rf"\b{re.escape(term)}\b", reply, re.I):
+                continue
+            if term.lower() in self.cv_lower:
+                continue
+            # Se il termine è nella domanda, il bot lo sta solo ripetendo per negarlo
+            # ("Nel CV non ho Kubernetes"): è la risposta giusta, non un'invenzione.
+            if term.lower() in domanda_low:
+                continue
+            if re.search(rf"non\s+(ho|abbiamo|c'è|risulta)[^.]{{0,40}}\b{re.escape(term)}\b", low):
+                continue
+            difetti.append(("invenzione", "tecnologia non presente nel CV", term))
 
         for m in VERSIONE_RE.finditer(reply):
             if m.group(0) not in self.cv_lower and m.group(0).lower() not in self.cv_lower:
@@ -242,6 +267,24 @@ class Rilevatore:
             if cifra not in self.cv_numeri:
                 difetti.append(("invenzione", "numero non presente nel CV", m.group(0).strip()))
 
+        difetti += self.analizza_relazioni(reply)
+        return difetti
+
+    @staticmethod
+    def analizza_relazioni(reply: str):
+        """Voci del CV presentate come se una fosse parte dell'altra."""
+        difetti = []
+        for frase in re.split(r"(?<=[.!?])\s+", reply):
+            for piattaforma, estranei in NON_APPARTENGONO.items():
+                if not re.search(ENUMERATIVA_RE.format(plat=piattaforma), frase, re.I):
+                    continue
+                for estraneo in estranei:
+                    if re.search(rf"\b{re.escape(estraneo)}\b", frase, re.I):
+                        difetti.append((
+                            "relazione",
+                            f"{estraneo} presentato come parte di {piattaforma}",
+                            frase.strip()[:120],
+                        ))
         return difetti
 
     @staticmethod
@@ -251,6 +294,8 @@ class Rilevatore:
         for s in suggestions or []:
             if any(re.search(p, s, re.I) for p in SUGGESTION_VICOLO_CIECO):
                 difetti.append(("suggestion", "chip a vicolo cieco", s))
+            elif re.search(SUGGESTION_ENUMERA_SOTTOELEMENTI, s):
+                difetti.append(("suggestion", "chiede di enumerare sotto-elementi", s))
         return difetti
 
 
@@ -333,7 +378,7 @@ def esegui(args):
             print(f"  {C_ROSSO}ERRORE{C_RESET} {errore}\n")
             return {"contesto": contesto, "domanda": domanda, "errore": errore, "difetti": []}
 
-        difetti = rilevatore.analizza(reply) + rilevatore.analizza_suggestions(suggestions)
+        difetti = rilevatore.analizza(reply, domanda) + rilevatore.analizza_suggestions(suggestions)
         print(f"  {reply[:200]}{'…' if len(reply) > 200 else ''}")
         for tipo, motivo, frammento in difetti:
             print(f"  {C_ROSSO}✗ {tipo}{C_RESET}: {motivo} → \"{frammento}\"")
@@ -411,6 +456,41 @@ def salva_e_riassumi(label, risultati):
     return 0
 
 
+def rianalizza(label, cv_path):
+    """Riapplica i rilevatori correnti a un report già salvato, senza richiamare prod.
+
+    Serve quando i rilevatori vengono corretti dopo un giro: le reply grezze sono
+    nel JSON, quindi il punteggio si ricalcola offline.
+    """
+    percorso = REPORT_DIR / f"{label}.json"
+    if not percorso.exists():
+        print(f"report non trovato: {percorso}", file=sys.stderr)
+        return 1
+
+    dati = json.loads(percorso.read_text(encoding="utf-8"))
+    rilevatore = Rilevatore(Path(cv_path).read_text(encoding="utf-8"))
+
+    prima = sum(len(r["difetti"]) for r in dati["risultati"])
+    for r in dati["risultati"]:
+        if r.get("errore"):
+            continue
+        difetti = (rilevatore.analizza(r.get("reply", ""), r.get("domanda", ""))
+                   + rilevatore.analizza_suggestions(r.get("suggestions")))
+        # le ripetizioni sono state calcolate durante il giro, non sono ricavabili qui
+        ripetizioni = [d for d in r["difetti"] if d["tipo"] == "ripetizione"]
+        r["difetti"] = [{"tipo": t, "motivo": m, "frammento": f} for t, m, f in difetti] + ripetizioni
+
+    dopo = sum(len(r["difetti"]) for r in dati["risultati"])
+    dati["rianalizzato"] = datetime.now().isoformat(timespec="seconds")
+    percorso.write_text(json.dumps(dati, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"rianalizzato {label}: {prima} → {dopo} difetti")
+    for r in dati["risultati"]:
+        for d in r["difetti"]:
+            print(f"  [{d['tipo']}] {r['domanda'][:40]:40} → \"{d['frammento'][:60]}\"")
+    return 0
+
+
 def confronta(label_a, label_b):
     def carica(label):
         p = REPORT_DIR / f"{label}.json"
@@ -460,6 +540,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--label", help="nome del report da salvare (es. prima, dopo)")
     p.add_argument("--compare", nargs=2, metavar=("A", "B"), help="confronta due report salvati")
+    p.add_argument("--reanalyze", metavar="LABEL", help="riapplica i rilevatori a un report salvato")
     p.add_argument("--api", default=API_DEFAULT)
     p.add_argument("--cv", default=str(CV_PATH_DEFAULT), help="CV di riferimento per il check invenzioni")
     p.add_argument("--env", default=str(Path(__file__).resolve().parent / ".env"))
@@ -471,6 +552,8 @@ def main():
 
     if args.compare:
         return confronta(*args.compare)
+    if args.reanalyze:
+        return rianalizza(args.reanalyze, args.cv)
     if not args.label:
         p.error("serve --label (oppure --compare)")
     return esegui(args)
