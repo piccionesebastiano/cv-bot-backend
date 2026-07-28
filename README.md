@@ -22,6 +22,7 @@ Pairs with **[cv-bot-frontend](https://github.com/piccionesebastiano/cv-bot-fron
 
 - **Grounding**: `CvLoaderService` loads a Markdown CV, hashes it, and builds the system prompt (`src/chat/prompts/cv-system-prompt.ts`) served to the model on every request.
 - **Semantic cache**: `SemanticCacheService` embeds incoming questions (`openai/text-embedding-3-small` via OpenRouter) and serves a cached answer on cosine similarity ≥ 0.88, avoiding a full LLM round-trip. Backed by Redis when `REDIS_URL` is set, otherwise a local JSON file.
+- **Anti-repetition**: `src/chat/prompts/episodes.ts` catalogues the anecdotes the CV supports and scans the *full* client history (up to 20 messages) for the ones already used, appending a "don't reuse these" system note. The history window sent to the model is shorter, so without this a repeated "tell me another" would recycle stories that had scrolled out of context.
 - **Streaming**: `/chat/stream` proxies OpenRouter's SSE stream and incrementally extracts the `reply` field out of the model's structured JSON output as it arrives.
 - **Guardrails**: `injection-patterns.ts` rejects prompt-injection attempts before they reach the model; `ValidationPipe` with `whitelist`/`forbidNonWhitelisted` rejects malformed payloads; request bodies are capped at 16kb.
 - **Admin**: `/admin/cv` lets an authenticated caller hot-swap the CV content at runtime (persisted to a volume) without a redeploy, invalidating the semantic cache on update.
@@ -73,6 +74,7 @@ Requires an OpenRouter API key ([openrouter.ai](https://openrouter.ai)) and Node
 | Variable            | Required | Default | Notes                                                                 |
 |----------------------|----------|---------|------------------------------------------------------------------------|
 | `OPENROUTER_API_KEY` | yes      | —       | Used for both chat completions and embeddings                          |
+| `LLM_MODEL`          | no       | `deepseek/deepseek-v4-flash` | Chat model; must be served by one of the allowlisted providers |
 | `PORT`               | no       | `3000`  |                                                                          |
 | `NODE_ENV`           | no       | —       | Set to `production` to enable `trust proxy`                            |
 | `ALLOWED_ORIGINS`    | yes*     | —       | Comma-separated CORS allowlist; empty means all origins are blocked    |

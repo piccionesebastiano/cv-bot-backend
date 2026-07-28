@@ -190,4 +190,97 @@ describe('ChatService', () => {
       expect(res.end).toHaveBeenCalled();
     });
   });
+
+  describe('nota anti-ripetizione', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    function capturedMessages(fetchMock: jest.SpyInstance): Array<{ role: string; content: string }> {
+      const body = (fetchMock.mock.calls[0]?.[1] as { body: string }).body;
+      return (JSON.parse(body) as { messages: Array<{ role: string; content: string }> }).messages;
+    }
+
+    it('segnala al modello gli episodi già raccontati nella history', async () => {
+      const { service } = makeService();
+      const res = makeResStub();
+      const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+
+      await service.streamChat(
+        {
+          message: "un'altro",
+          history: [
+            { role: 'user', content: 'raccontami un problema tecnico risolto' },
+            { role: 'assistant', content: 'Il process manager girava in modalità fork invece di cluster.' },
+          ],
+        },
+        res as unknown as import('express').Response,
+      );
+
+      const systemMessages = capturedMessages(fetchMock).filter((m) => m.role === 'system');
+      expect(systemMessages).toHaveLength(2);
+      expect(systemMessages[1].content).toContain('EPISODI GIÀ RACCONTATI');
+      expect(systemMessages[1].content).toContain('Strapi');
+    });
+
+    it('non aggiunge la nota quando la history non contiene episodi', async () => {
+      const { service } = makeService();
+      const res = makeResStub();
+      const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+
+      await service.streamChat(
+        {
+          message: 'ciao',
+          history: [
+            { role: 'user', content: 'ciao' },
+            { role: 'assistant', content: 'Ciao! Hai qualche domanda da farmi?' },
+          ],
+        },
+        res as unknown as import('express').Response,
+      );
+
+      const systemMessages = capturedMessages(fetchMock).filter((m) => m.role === 'system');
+      expect(systemMessages).toHaveLength(1);
+    });
+
+    it('rileva episodi usciti dalla finestra inviata al modello', async () => {
+      // La history del client arriva fino a 20 messaggi, quella inviata al modello è più corta:
+      // l'episodio in testa non deve comunque poter essere ripetuto.
+      const { service } = makeService();
+      const res = makeResStub();
+      const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+
+      const filler = Array.from({ length: 18 }, (_, i) => ({
+        role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: `messaggio di riempimento numero ${i}`,
+      }));
+
+      await service.streamChat(
+        {
+          message: "un'altro",
+          history: [
+            { role: 'user', content: 'raccontami un problema' },
+            { role: 'assistant', content: 'Ho serializzato le offerte per evitare race condition su Uboat.' },
+            ...filler,
+          ],
+        },
+        res as unknown as import('express').Response,
+      );
+
+      const messages = capturedMessages(fetchMock);
+      const systemMessages = messages.filter((m) => m.role === 'system');
+      expect(systemMessages[1]?.content).toContain('Uboat');
+      // …e l'episodio non è più fra i messaggi di conversazione inviati al modello
+      const conversation = messages.filter((m) => m.role !== 'system').map((m) => m.content).join('\n');
+      expect(conversation).not.toContain('race condition');
+    });
+  });
 });
+
+function makeResStub() {
+  return {
+    writeHead: jest.fn(),
+    write: jest.fn(),
+    end: jest.fn(),
+  };
+}

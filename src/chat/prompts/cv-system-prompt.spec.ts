@@ -54,4 +54,25 @@ describe('buildSystemPrompt', () => {
   it('prompt vuoto non lancia eccezioni', () => {
     expect(() => buildSystemPrompt('')).not.toThrow();
   });
+
+  it('vieta di aggiungere dettagli non presenti nel CV', () => {
+    expect(prompt).toContain('FEDELTÀ AL CV');
+    expect(prompt).toContain('specializzare un termine generico');
+    expect(prompt).toContain('inventare metriche');
+  });
+
+  it('vieta di giudicare la propria esperienza', () => {
+    expect(prompt).toContain('NON GIUDICARE LA TUA ESPERIENZA');
+    expect(prompt).toContain('niente di super complesso');
+    expect(prompt).toContain('era la prima volta');
+  });
+
+  it('vieta aperture e chiusure a stampino', () => {
+    expect(prompt).toContain('ENTRA DRITTO NEL FATTO');
+    expect(prompt).toContain('mai una morale');
+  });
+
+  it('vieta di ripetere episodi già raccontati', () => {
+    expect(prompt).toContain('NON RIPETERE UN EPISODIO GIÀ RACCONTATO');
+  });
 });

@@ -7,6 +7,7 @@ import { ChatRequestDto } from './dto/chat-request.dto';
 import { ChatResponseDto } from './dto/chat-response.dto';
 import { CvLoaderService } from '../common/cv-loader.service';
 import { INJECTION_PATTERNS } from './injection-patterns';
+import { detectToldEpisodes, buildRepetitionNote } from './prompts/episodes';
 
 interface OpenRouterResponse {
   choices: Array<{ message: { content: string } }>;
@@ -20,7 +21,7 @@ interface LLMParsed {
 }
 
 const LLM_TIMEOUT_MS = 40_000;
-const MAX_HISTORY_PAIRS = 6; // max 6 scambi = 12 messaggi
+const MAX_HISTORY_PAIRS = 8; // max 8 scambi = 16 messaggi (il client ne invia fino a 20)
 
 @Injectable()
 export class ChatService {
@@ -28,7 +29,9 @@ export class ChatService {
   private readonly apiKey: string;
 
   private readonly OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-  private readonly MODEL = 'deepseek/deepseek-v4-flash';
+  // Override con LLM_MODEL per provare un modello più capace senza rebuild.
+  // Attenzione: i provider in PROVIDER_ROUTING devono servire anche il modello scelto.
+  private readonly MODEL: string;
   // GDPR: allowlist esplicita di provider USA con SCC (garanzie di trasferimento art. 46).
   // Usiamo `only` invece di escludere per nome perché data_collection filtra la
   // conservazione, NON la geografia: senza allowlist OpenRouter può instradare verso
@@ -51,6 +54,7 @@ export class ChatService {
     const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
     if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata nelle variabili d'ambiente.");
     this.apiKey = apiKey;
+    this.MODEL = this.configService.get<string>('LLM_MODEL') ?? 'deepseek/deepseek-v4-flash';
   }
 
   async chat(dto: ChatRequestDto): Promise<ChatResponseDto> {
@@ -76,7 +80,7 @@ export class ChatService {
       }
 
       this.logger.log(`✗ Cache MISS — invio a OpenRouter (${this.MODEL})`);
-      const { reply, suggestions } = await this.callLLM(dto.message, []);
+      const { reply, suggestions } = await this.callLLM(dto.message, [], null);
 
       if (lookup.embedding) {
         this.semanticCache.set(dto.message, lookup.embedding, reply, suggestions).catch((err) => {
@@ -91,7 +95,8 @@ export class ChatService {
     // Multi-turn: vai diretto al LLM con la history
     this.logger.log(`→ Multi-turn, skip cache — invio a OpenRouter (${this.MODEL})`);
     const cappedHistory = (dto.history ?? []).slice(-(MAX_HISTORY_PAIRS * 2));
-    const { reply, suggestions } = await this.callLLM(dto.message, cappedHistory);
+    const repetitionNote = this.buildEpisodeNote(dto.history ?? []);
+    const { reply, suggestions } = await this.callLLM(dto.message, cappedHistory, repetitionNote);
     this.conversationLog.logTurn(dto.sessionId, dto.message, reply);
     return { reply, suggestions };
   }
@@ -132,7 +137,7 @@ export class ChatService {
         }
 
         this.logger.log(`✗ [stream] Cache MISS — OpenRouter`);
-        const parsed = await this.streamLLM(dto.message, [], send);
+        const parsed = await this.streamLLM(dto.message, [], null, send);
 
         if (lookup.embedding && parsed) {
           this.semanticCache.set(dto.message, lookup.embedding, parsed.reply, parsed.suggestions).catch((err) => {
@@ -145,7 +150,8 @@ export class ChatService {
 
       this.logger.log(`→ [stream] Multi-turn, skip cache`);
       const cappedHistory = (dto.history ?? []).slice(-(MAX_HISTORY_PAIRS * 2));
-      const parsed = await this.streamLLM(dto.message, cappedHistory, send);
+      const repetitionNote = this.buildEpisodeNote(dto.history ?? []);
+      const parsed = await this.streamLLM(dto.message, cappedHistory, repetitionNote, send);
       if (parsed) this.conversationLog.logTurn(dto.sessionId, dto.message, parsed.reply);
     } catch (err) {
       this.logger.error('Errore nel streaming SSE', err);
@@ -155,9 +161,36 @@ export class ChatService {
     }
   }
 
+  /**
+   * Legge la history COMPLETA (fino a 20 messaggi dal client) per capire quali
+   * episodi del CV sono già stati raccontati: la finestra inviata al modello è
+   * più corta, quindi da sola non basta a evitare le ripetizioni.
+   */
+  private buildEpisodeNote(fullHistory: Array<{ role: string; content: string }>): string | null {
+    const told = detectToldEpisodes(fullHistory);
+    if (told.length > 0) {
+      this.logger.log(`Episodi già raccontati: ${told.length} — ${told.join(' | ')}`);
+    }
+    return buildRepetitionNote(told);
+  }
+
+  private buildMessages(
+    userMessage: string,
+    history: Array<{ role: string; content: string }>,
+    repetitionNote: string | null,
+  ): Array<{ role: string; content: string }> {
+    return [
+      { role: 'system', content: this.cvLoader.systemPrompt },
+      ...(repetitionNote ? [{ role: 'system', content: repetitionNote }] : []),
+      ...history,
+      { role: 'user', content: userMessage },
+    ];
+  }
+
   private async streamLLM(
     userMessage: string,
     history: Array<{ role: string; content: string }>,
+    repetitionNote: string | null,
     send: (data: object) => void,
   ): Promise<LLMParsed | null> {
     const controller = new AbortController();
@@ -182,11 +215,7 @@ export class ChatService {
           max_tokens: this.MAX_TOKENS,
           stream: true,
           provider: this.PROVIDER_ROUTING,
-          messages: [
-            { role: 'system', content: this.cvLoader.systemPrompt },
-            ...history,
-            { role: 'user', content: userMessage },
-          ],
+          messages: this.buildMessages(userMessage, history, repetitionNote),
         }),
       });
     } catch (err) {
@@ -294,7 +323,11 @@ export class ChatService {
     }
   }
 
-  private async callLLM(userMessage: string, history: Array<{ role: string; content: string }>): Promise<LLMParsed> {
+  private async callLLM(
+    userMessage: string,
+    history: Array<{ role: string; content: string }>,
+    repetitionNote: string | null,
+  ): Promise<LLMParsed> {
     this.logger.log(`→ POST ${this.OPENROUTER_URL}`);
     const t0 = Date.now();
 
@@ -319,11 +352,7 @@ export class ChatService {
           model: this.MODEL,
           max_tokens: this.MAX_TOKENS,
           provider: this.PROVIDER_ROUTING,
-          messages: [
-            { role: 'system', content: this.cvLoader.systemPrompt },
-            ...history,
-            { role: 'user', content: userMessage },
-          ],
+          messages: this.buildMessages(userMessage, history, repetitionNote),
         }),
       });
     } catch (err) {
