@@ -409,7 +409,11 @@ def esegui(args):
                 history.append({"role": "assistant", "content": reply[:2000]})
 
                 nuovi = rilevatore.episodi_in(reply)
-                ripetuti = nuovi & episodi_visti
+                # Riparlare dello stesso episodio è un difetto solo se è stato chiesto un
+                # episodio DIVERSO: "come hai gestito la cache?" è un approfondimento
+                # legittimo e deve poter tornare sul tema appena trattato.
+                chiede_altro = re.search(r"\bun'?altr[ao]\b|\baltro (esempio|caso|episodio)\b|\bancora\b", domanda, re.I)
+                ripetuti = (nuovi & episodi_visti) if chiede_altro else set()
                 if ripetuti:
                     print(f"  {C_ROSSO}✗ ripetizione{C_RESET}: {', '.join(sorted(ripetuti))}\n")
                     esito["difetti"].append({
@@ -501,6 +505,12 @@ def confronta(label_a, label_b):
 
     a, b = carica(label_a), carica(label_b)
     ca, cb = conta(a["risultati"]), conta(b["risultati"])
+
+    if len(a["risultati"]) != len(b["risultati"]):
+        print(f"\n{C_GIALLO}ATTENZIONE: i due report hanno un numero diverso di risposte "
+              f"({len(a['risultati'])} vs {len(b['risultati'])}). I totali qui sotto non sono "
+              f"confrontabili — guarda le sezioni RISOLTI e NUOVI, che confrontano solo le "
+              f"domande presenti in entrambi.{C_RESET}")
 
     print(f"\n{'difetto':18} {label_a:>10} {label_b:>10}   delta")
     print("─" * 52)

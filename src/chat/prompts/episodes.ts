@@ -111,13 +111,18 @@ export function detectToldEpisodes(history: Array<{ role: string; content: strin
 export function buildRepetitionNote(toldLabels: string[]): string | null {
   if (toldLabels.length === 0) return null;
 
-  const list = toldLabels.map((l) => `- ${l}`).join('\n');
-  const remaining = EPISODES.length - toldLabels.length;
+  const told = new Set(toldLabels);
+  const remaining = EPISODES.filter((ep) => !told.has(ep.label)).map((ep) => ep.label);
 
-  const closing =
-    remaining > 0
-      ? 'Se ti viene chiesto un altro episodio, scegline uno NON presente in questa lista.'
-      : 'Hai esaurito gli episodi del CV: se te ne viene chiesto un altro, dillo apertamente invece di ripeterne uno.';
+  const usati = `EPISODI GIÀ RACCONTATI in questa conversazione — non riproporli:\n${toldLabels.map((l) => `- ${l}`).join('\n')}`;
 
-  return `EPISODI GIÀ RACCONTATI in questa conversazione — non riproporli:\n${list}\n${closing}`;
+  // L'elenco di ciò che resta è la parte che conta: con la sola lista di quelli usati il
+  // modello si dichiarava esaurito dopo cinque episodi, pur avendone altri disponibili.
+  if (remaining.length === 0) {
+    return `${usati}\nHai esaurito gli episodi del CV: se te ne viene chiesto un altro, dillo apertamente invece di ripeterne uno.`;
+  }
+
+  return `${usati}\n\nANCORA DISPONIBILI (${remaining.length}) — se ti viene chiesto un altro episodio, prendine uno da qui:\n${remaining
+    .map((l) => `- ${l}`)
+    .join('\n')}`;
 }

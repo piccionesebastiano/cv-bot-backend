@@ -57,15 +57,25 @@ describe('buildRepetitionNote', () => {
     expect(note).toContain('non riproporli');
   });
 
-  it('chiede di scegliere un episodio diverso finché ne restano', () => {
-    expect(buildRepetitionNote(['uno'])).toContain('NON presente in questa lista');
+  it('elenca gli episodi ancora disponibili con il loro numero', () => {
+    const primo = EPISODES[0].label;
+    const note = buildRepetitionNote([primo]) as string;
+    expect(note).toContain(`ANCORA DISPONIBILI (${EPISODES.length - 1})`);
+    expect(note).toContain(EPISODES[1].label);
   });
 
-  it('segnala di dirlo apertamente quando gli episodi sono esauriti', () => {
+  it('non elenca fra i disponibili quelli già raccontati', () => {
+    const primo = EPISODES[0].label;
+    const note = buildRepetitionNote([primo]) as string;
+    const sezioneDisponibili = note.slice(note.indexOf('ANCORA DISPONIBILI'));
+    expect(sezioneDisponibili).not.toContain(primo);
+  });
+
+  it('segnala di dirlo apertamente solo quando gli episodi sono davvero esauriti', () => {
     const tutti = EPISODES.map((e) => e.label);
-    const note = buildRepetitionNote(tutti);
+    const note = buildRepetitionNote(tutti) as string;
     expect(note).toContain('esaurito');
-    expect(note).not.toContain('NON presente in questa lista');
+    expect(note).not.toContain('ANCORA DISPONIBILI');
   });
 });
 
