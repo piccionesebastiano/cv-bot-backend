@@ -8,6 +8,7 @@ import { ChatResponseDto } from './dto/chat-response.dto';
 import { CvLoaderService } from '../common/cv-loader.service';
 import { INJECTION_PATTERNS } from './injection-patterns';
 import { detectToldEpisodes, buildRepetitionNote } from './prompts/episodes';
+import { filterSuggestions } from './prompts/suggestion-filter';
 
 interface OpenRouterResponse {
   choices: Array<{ message: { content: string } }>;
@@ -403,11 +404,17 @@ export class ChatService {
     try {
       const parsed = JSON.parse(cleaned) as { reply?: unknown; suggestions?: unknown };
       const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
-      const suggestions = Array.isArray(parsed.suggestions)
-        ? (parsed.suggestions as unknown[])
-            .filter((s): s is string => typeof s === 'string')
-            .slice(0, 3)
+      const rawSuggestions = Array.isArray(parsed.suggestions)
+        ? (parsed.suggestions as unknown[]).filter((s): s is string => typeof s === 'string')
         : [];
+
+      // Scarta i follow-up a cui il CV non permette di rispondere, prima del taglio a 3:
+      // così un chip scartato lascia spazio a uno valido invece di ridurre la fila.
+      const { kept, dropped } = filterSuggestions(rawSuggestions);
+      if (dropped.length > 0) {
+        this.logger.log(`Suggestions scartate (vicolo cieco): ${JSON.stringify(dropped)}`);
+      }
+      const suggestions = kept.slice(0, 3);
 
       if (!reply) {
         this.logger.warn('JSON parsato ma reply vuoto, uso raw come fallback');

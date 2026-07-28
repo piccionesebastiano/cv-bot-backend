@@ -1,0 +1,6 @@
+# Domande vere raccolte da recruiter / HR — una per riga.
+# Le righe che iniziano con # vengono ignorate.
+# Uso: python3 test-quality.py --label hr --questions hr-questions.txt
+#
+# Metti qui le domande così come sono state poste, senza riscriverle:
+# il valore del test sta nel fatto che siano formulate come le formula un umano.

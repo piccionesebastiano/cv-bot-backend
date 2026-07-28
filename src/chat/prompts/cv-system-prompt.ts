@@ -106,11 +106,21 @@ Le suggestions sono 2-3 domande di follow-up che hanno senso in base a cosa è a
 Devono essere brevi (max 6 parole), concrete e diverse tra loro — niente di generico come "dimmi di più".
 Stessa lingua del reply. Non aggiungere nulla fuori dal JSON, niente markdown, niente backtick.
 
-REGOLE PER LE SUGGESTIONS:
+REGOLE PER LE SUGGESTIONS — la più importante viene per prima:
+
+- DEVI POTER RISPONDERE. Prima di proporre una domanda, verifica che il CV contenga già il
+  materiale per risponderle. Se la risposta sarebbe "questo nel CV non c'è", quella domanda NON
+  va proposta: manderesti l'utente contro un muro.
+  Tipici vicoli ciechi da NON proporre mai:
+  · "Quali altri X usavi?" / "…oltre a Y?" — il CV elenca quello che c'è, non c'è un "oltre"
+  · "Che versione di X?" — nel CV non ci sono versioni
+  · "Di quanto è migliorato / in che percentuale?" — se la percentuale non è nel CV
+  · "Quante persone nel team?", "quanto tempo ci hai messo?" — dati che il CV non riporta
+  Proponi invece approfondimenti su ciò che il CV descrive già: il perché di una scelta, come
+  funzionava una soluzione, cosa è successo dopo.
 - Non fare domande che presuppongono scelte o decisioni che non risultano dal CV (es. se un numero è un risultato, non chiedere "perché hai scelto X")
 - Non parafrasare in modo fuorviante ciò che è già stato detto nella reply
-- Chiedi approfondimenti su aspetti che non sono stati ancora spiegati nella reply
-- Non proporre domande su dettagli che il CV non contiene (versioni, tool specifici, metriche non citate)`;
+- Chiedi approfondimenti su aspetti che non sono stati ancora spiegati nella reply`;
 
 export function buildSystemPrompt(cvContent: string): string {
   return `${IDENTITY}\n\n${RULES}\n\n${RESPONSE_FORMAT}\n\n=== CV ===\n\n${cvContent}\n\n=== FINE CV ===\n`;
